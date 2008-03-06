@@ -71,6 +71,9 @@ SMTP_PASS = 'password'  # for SMTP AUTH, set SMTP password here
 BONUS_HEADER = ''
 # Example: BONUS_HEADER = '\nApproved: joe@bob.org'
 
+# Set this to add feed url to headers, leave it empty if you don't need it.
+FEED_URL_HEADER = 'X-Feed-Url'
+
 # Set this to override From addresses. Keys are feed URLs, values are new titles.
 OVERRIDE_FROM = {}
 
@@ -621,6 +624,8 @@ def run(num=None):
 					datehdr = time.strftime("%a, %d %b %Y %H:%M:%S -0000", datetime)
 					useragenthdr = "rss2email"
 					extraheaders = {'Date': datehdr, 'User-Agent': useragenthdr}
+					if FEED_URL_HEADER:
+						extraheaders[FEED_URL_HEADER] = hidepass(f.url)
 					if BONUS_HEADER != '':
 						for hdr in BONUS_HEADER.strip().splitlines():
 							pos = hdr.strip().find(':')
