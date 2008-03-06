@@ -598,7 +598,7 @@ def run(num=None):
 					tohdr = (f.to or default_to)
 					subjecthdr = title
 					datehdr = time.strftime("%a, %d %b %Y %H:%M:%S -0000", datetime)
-					useragenthdr = "rss2email"
+					useragenthdr = "rss2email/%s" % __version__
 					extraheaders = {'Date': datehdr, 'User-Agent': useragenthdr}
 					if FEED_URL_HEADER:
 						extraheaders[FEED_URL_HEADER] = hidepass(f.url)
