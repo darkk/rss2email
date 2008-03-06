@@ -314,6 +314,15 @@ def header7bit(s):
 	p = re.compile('=\n([^ \t])');
 	return p.sub(r'\1', mimify.mime_encode_header(s + ' ')[:-1])
 
+def hidepass(url):
+	from urlparse import urlsplit, urlunsplit
+	from __builtin__ import list
+	l = list(urlsplit(url))
+	s = l[1].rsplit('@', 1)
+	if len(s) == 2:
+		l[1] = "%s:-password-@%s" % (s[0].split(':', 1)[0], s[1])
+	return urlunsplit(l)
+
 ### Parsing Utilities ###
 
 def getContent(entry, HTMLOK=0):
@@ -492,19 +501,19 @@ def run(num=None):
 		for f in ifeeds:
 			try: 
 				feednum += 1
-				if VERBOSE: print >>warn, 'I: Processing [%d] "%s"' % (feednum, f.url)
+				if VERBOSE: print >>warn, 'I: Processing [%d] "%s"' % (feednum, hidepass(f.url))
 				r = {}
 				try:
 					r = timelimit(FEED_TIMEOUT, parse)(f.url, f.etag, f.modified)
 				except TimeoutError:
-					print >>warn, 'W: feed [%d] "%s" timed out' % (feednum, f.url)
+					print >>warn, 'W: feed [%d] "%s" timed out' % (feednum, hidepass(f.url))
 					continue
 				
 				# Handle various status conditions, as required
 				if 'status' in r:
 					if r.status == 301: f.url = r['url']
 					elif r.status == 410:
-						print >>warn, "W: feed gone; deleting", f.url
+						print >>warn, "W: feed gone; deleting", hidepass(f.url)
 						feeds.remove(f)
 						continue
 				
@@ -515,46 +524,46 @@ def run(num=None):
 				exc_type = r.get("bozo_exception", Exception()).__class__
 				if http_status != 304 and not r.get('version', ''):
 					if http_status not in [200, 302]: 
-						print >>warn, "W: error %d [%d] %s" % (http_status, feednum, f.url)
+						print >>warn, "W: error %d [%d] %s" % (http_status, feednum, hidepass(f.url))
 
 					elif contains(http_headers.get('content-type', 'rss'), 'html'):
-						print >>warn, "W: looks like HTML [%d] %s"  % (feednum, f.url)
+						print >>warn, "W: looks like HTML [%d] %s"  % (feednum, hidepass(f.url))
 
 					elif http_headers.get('content-length', '1') == '0':
-						print >>warn, "W: empty page [%d] %s" % (feednum, f.url)
+						print >>warn, "W: empty page [%d] %s" % (feednum, hidepass(f.url))
 
 					elif hasattr(socket, 'timeout') and exc_type == socket.timeout:
-						print >>warn, "W: timed out on [%d] %s" % (feednum, f.url)
+						print >>warn, "W: timed out on [%d] %s" % (feednum, hidepass(f.url))
 					
 					elif exc_type == IOError:
-						print >>warn, 'W: "%s" [%d] %s' % (r.bozo_exception, feednum, f.url)
+						print >>warn, 'W: "%s" [%d] %s' % (r.bozo_exception, feednum, hidepass(f.url))
 					
 					elif hasattr(feedparser, 'zlib') and exc_type == feedparser.zlib.error:
-						print >>warn, "W: broken compression [%d] %s" % (feednum, f.url)
+						print >>warn, "W: broken compression [%d] %s" % (feednum, hidepass(f.url))
 					
 					elif exc_type in socket_errors:
 						exc_reason = r.bozo_exception.args[1]
-						print >>warn, "W: %s [%d] %s" % (exc_reason, feednum, f.url)
+						print >>warn, "W: %s [%d] %s" % (exc_reason, feednum, hidepass(f.url))
 
 					elif exc_type == urllib2.URLError:
 						if r.bozo_exception.reason.__class__ in socket_errors:
 							exc_reason = r.bozo_exception.reason.args[1]
 						else:
 							exc_reason = r.bozo_exception.reason
-						print >>warn, "W: %s [%d] %s" % (exc_reason, feednum, f.url)
+						print >>warn, "W: %s [%d] %s" % (exc_reason, feednum, hidepass(f.url))
 					
 					elif exc_type == AttributeError:
-						print >>warn, "W: %s [%d] %s" % (r.bozo_exception, feednum, f.url)
+						print >>warn, "W: %s [%d] %s" % (r.bozo_exception, feednum, hidepass(f.url))
 					
 					elif exc_type == KeyboardInterrupt:
 						raise r.bozo_exception
 						
 					elif r.bozo:
-						print >>warn, 'E: error in [%d] "%s" feed (%s)' % (feednum, f.url, r.get("bozo_exception", "can't process"))
+						print >>warn, 'E: error in [%d] "%s" feed (%s)' % (feednum, hidepass(f.url), r.get("bozo_exception", "can't process"))
 
 					else:
 						print >>warn, "=== SEND THE FOLLOWING TO rss2email@aaronsw.com ==="
-						print >>warn, "E:", r.get("bozo_exception", "can't process"), f.url
+						print >>warn, "E:", r.get("bozo_exception", "can't process"), hidepass(f.url)
 						print >>warn, r
 						print >>warn, "rss2email", __version__
 						print >>warn, "feedparser", feedparser.__version__
@@ -582,7 +591,7 @@ def run(num=None):
 
 					if not (f.to or default_to):
 						print "No default email address defined. Please run 'r2e email emailaddress'"
-						print "Ignoring feed %s" % f.url
+						print "Ignoring feed %s" % hidepass(f.url)
 						break
 					
 					if 'title_detail' in entry and entry.title_detail:
@@ -676,7 +685,7 @@ def run(num=None):
 				raise
 			except:
 				print >>warn, "=== SEND THE FOLLOWING TO rss2email@aaronsw.com ==="
-				print >>warn, "E: could not parse", f.url
+				print >>warn, "E: could not parse", hidepass(f.url)
 				traceback.print_exc(file=warn)
 				print >>warn, "rss2email", __version__
 				print >>warn, "feedparser", feedparser.__version__
@@ -699,7 +708,7 @@ def list():
 		print "default email:", default_to
 	else: ifeeds = feeds; i = 0
 	for f in ifeeds:
-		print `i`+':', f.url, '('+(f.to or ('default: '+default_to))+')'
+		print `i`+':', hidepass(f.url), '('+(f.to or ('default: '+default_to))+')'
 		if not (f.to or default_to):
 			print "   W: Please define a default address with 'r2e email emailaddress'"
 		i+= 1
