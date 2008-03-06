@@ -260,41 +260,10 @@ html2text = h2t.html2text
 
 ### Utility Functions ###
 
-import threading
 class TimeoutError(Exception): pass
 
 class InputError(Exception): pass
 
-def timelimit(timeout, function):
-#    def internal(function):
-        def internal2(*args, **kw):
-            """
-            from http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/473878
-            """
-            class Calculator(threading.Thread):
-                def __init__(self):
-                    threading.Thread.__init__(self)
-                    self.result = None
-                    self.error = None
-                
-                def run(self):
-                    try:
-                        self.result = function(*args, **kw)
-                    except:
-                        self.error = sys.exc_info()
-            
-            c = Calculator()
-            c.setDaemon(True) # don't hold up exiting
-            c.start()
-            c.join(timeout)
-            if c.isAlive():
-                raise TimeoutError
-            if c.error:
-                raise c.error[0], c.error[1]
-            return c.result
-        return internal2
-#    return internal
-    
 
 warn = sys.stderr
 
@@ -462,14 +431,21 @@ def unlock(feeds, feedfileObject):
 		os.rename(feedfile+'.tmp', feedfile)
 		fcntl.flock(feedfileObject.fileno(), fcntl.LOCK_UN)
 
-#@timelimit(FEED_TIMEOUT)		
-def parse(url, etag, modified):
-	if PROXY == '':
-		return feedparser.parse(url, etag, modified)
-	else:
-		proxy = urllib2.ProxyHandler( {"http":PROXY} )
-		return feedparser.parse(url, etag, modified, handlers = [proxy])	
-	
+def parse(url, etag, modified, reply_timeout):
+	old_timeout = socket.getdefaulttimeout()
+	socket.setdefaulttimeout(reply_timeout)
+	try:
+		try:
+			if PROXY == '':
+				retval = feedparser.parse(url, etag, modified)
+			else:
+				proxy = urllib2.ProxyHandler( {"http":PROXY} )
+				retval = feedparser.parse(url, etag, modified, handlers = [proxy])
+		except socket.timeout:
+			raise TimeoutError
+	finally:
+		socket.setdefaulttimeout(old_timeout)
+	return retval
 		
 ### Program Functions ###
 
@@ -507,7 +483,7 @@ def run(num=None):
 				if VERBOSE: print >>warn, 'I: Processing [%d] "%s"' % (feednum, hidepass(f.url))
 				r = {}
 				try:
-					r = timelimit(FEED_TIMEOUT, parse)(f.url, f.etag, f.modified)
+					r = parse(f.url, f.etag, f.modified, FEED_TIMEOUT)
 				except TimeoutError:
 					print >>warn, 'W: feed [%d] "%s" timed out' % (feednum, hidepass(f.url))
 					continue
