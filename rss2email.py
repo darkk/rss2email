@@ -189,6 +189,11 @@ def send(sender, recipient, subject, body, contenttype, extraheaders=None, smtps
 			i, o = os.popen2(["/usr/sbin/sendmail", recipient])
 			i.write(msg_as_string)
 			i.close(); o.close()
+			pid, status = os.wait()
+			if status != 0:
+				print >>warn, ""
+				print >>warn, ('Fatal error: sendmail exited with code %s' % status)
+				sys.exit(1)
 			del i, o
 		except:
 			print '''Error attempting to send email via sendmail. Possibly you need to configure your config.py to use a SMTP server? Please refer to the rss2email documentation or website (http://rss2email.infogami.com) for complete documentation of config.py. The options below may suffice for configuring email:
