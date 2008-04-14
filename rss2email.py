@@ -84,6 +84,49 @@ FEED_TIMEOUT = 60
 USE_CSS_STYLING = 0
 STYLE_SHEET='h1 {font: 18pt Georgia, "Times New Roman";} body {font: 12pt Arial;} a:link {font: 12pt Arial; font-weight: bold; color: #0000cc} blockquote {font-family: monospace; }  .header { background: #e0ecff; border-bottom: solid 4px #c3d9ff; padding: 5px; margin-top: 0px; color: red;} .header a { font-size: 20px; text-decoration: none; } .footer { background: #c3d9ff; border-top: solid 4px #c3d9ff; padding: 5px; margin-bottom: 0px; } #entry {border: solid 4px #c3d9ff; } #body { margin-left: 5px; margin-right: 5px; }'
 
+
+TPL_HTML_CSS = """
+<html>
+<head><style><!-- %(STYLE_SHEET)s //--></style></head>
+<body><div id="entry">
+<h1 class="header" ><a href="%(link)s">%(title)s</a></h1>
+<div id="body"><table><tr><td>%(body)s</td></tr></table></div>
+<p class="footer">URL: <a href="%(link)s">%(link)s</a>
+%(ENCLOSURE_TPL)s
+</p>
+</div></body>
+</html>
+"""
+
+TPL_HTML_PLAIN = """
+<html><body>
+<h1><a href="%(link)s">%(title)s</a></h1>
+%(body)s
+<p>URL: <a href="%(link)s">%(link)s</a>
+%(ENCLOSURE_TPL)s</p>
+</body></html>
+"""
+
+TPL_ENCLOSURE_HTML = (
+		"<br/>", # prologue
+		"""Enclosure: <a href="%(enclosure)s">%(enclosure)s</a><br/>""",
+		"", # epilogue
+		)
+
+TPL_TEXT = """
+%(body)s
+
+URL: %(link)s
+%(ENCLOSURE_TPL)s
+"""
+
+TPL_ENCLOSURE_TEXT = (
+		"", # prologue
+		"""Enclosure: %(enclosure)s""",
+		"\n", # epilogue
+		)
+
+
 # If you have an HTTP Proxy set this in the format 'http://your.proxy.here:8080/'
 PROXY=""
 
@@ -594,12 +637,53 @@ def run(num=None):
 					from_addr = getEmail(r.feed, entry)
 					
 					name = getName(r, entry)
+
+					entrycontent = getContent(entry, HTMLOK=HTML_MAIL)
+
+					force_html = USE_CSS_STYLING and HTML_MAIL
+					if force_html or ishtml(entrycontent):
+						contenttype = 'html'
+						enctpl = TPL_ENCLOSURE_HTML
+						if force_html:
+							tpl = TPL_HTML_CSS
+						else:
+							tpl = TPL_HTML_PLAIN
+					else:
+						contenttype = 'plain'
+						enctpl = TPL_ENCLOSURE_TEXT
+						tpl = TPL_TEXT
+
+					if hasattr(entry,'enclosures'):
+						encs = [enclosure.url for enclosure in entry.enclosures if enclosure.url != ""]
+					else:
+						encs = ()
+
+					substs = {
+						'STYLE_SHEET': STYLE_SHEET,
+						'link': link,
+						'title': title,
+						}
+
+					if ishtml(entrycontent):
+						substs['body'] = entrycontent[1].strip()
+					else:
+						substs['body'] = entrycontent.strip()
+
+					if len(encs):
+						substs['ENCLOSURE_TPL'] = (
+							enctpl[0] +
+							"".join([enctpl[1] % dict(substs.items() + {'enclosure': eurl}.items()) for eurl in encs]) +
+							enctpl[2])
+					else:
+						substs['ENCLOSURE_TPL'] = ""
+
 					fromhdr = '"'+ name + '" <' + from_addr + ">"
 					tohdr = (f.to or default_to)
-					subjecthdr = title
-					datehdr = time.strftime("%a, %d %b %Y %H:%M:%S -0000", datetime)
-					useragenthdr = "rss2email/%s" % __version__
-					extraheaders = {'Date': datehdr, 'User-Agent': useragenthdr}
+					subjecthdr = h2t.unescape(title)
+					content = tpl % substs
+					extraheaders = {
+							'Date': time.strftime("%a, %d %b %Y %H:%M:%S -0000", datetime),
+							'User-Agent': "rss2email/"+__version__ }
 					if FEED_URL_HEADER:
 						extraheaders[FEED_URL_HEADER] = hidepass(f.url)
 					if BONUS_HEADER != '':
@@ -609,53 +693,6 @@ def run(num=None):
 								extraheaders[hdr[:pos]] = hdr[pos+1:].strip()
 							else:
 								print >>warn, "W: malformed BONUS HEADER", BONUS_HEADER	
-					
-					entrycontent = getContent(entry, HTMLOK=HTML_MAIL)
-					contenttype = 'plain'
-					content = ''
-					if USE_CSS_STYLING and HTML_MAIL:
-						contenttype = 'html'
-						content = "<html>\n" 
-						content += '<head><style><!--' + STYLE_SHEET + '//--></style></head>\n'
-						content += '<body>\n'
-						content += '<div id="entry">\n'
-						content += '<h1'
-						content += ' class="header"'
-						content += '><a href="'+link+'">'+subjecthdr+'</a></h1>\n\n'
-						if ishtml(entrycontent):
-							body = entrycontent[1].strip()
-						else:
-							body = entrycontent.strip()
-						if body != '':	
-							content += '<div id="body"><table><tr><td>\n' + body + '</td></tr></table></div>\n'
-						content += '\n<p class="footer">URL: <a href="'+link+'">'+link+'</a>'
-						if hasattr(entry,'enclosures'):
-							for enclosure in entry.enclosures:
-								if enclosure.url != "":
-									content += ('<br/>Enclosure: <a href="'+unu(enclosure.url)+'">'+unu(enclosure.url)+"</a>\n")
-						content += '</p></div>\n'
-						content += "\n\n</body></html>"
-					else:	
-						if ishtml(entrycontent):
-							contenttype = 'html'
-							content = "<html>\n" 
-							content = ("<html><body>\n\n" + 
-							           '<h1><a href="'+link+'">'+subjecthdr+'</a></h1>\n\n' +
-							           entrycontent[1].strip() + # drop type tag (HACK: bad abstraction)
-							           '<p>URL: <a href="'+link+'">'+link+'</a></p>' )
-							           
-							if hasattr(entry,'enclosures'):
-								for enclosure in entry.enclosures:
-									if enclosure.url != "":
-										content += ('Enclosure: <a href="'+unu(enclosure.url)+'">'+unu(enclosure.url)+"</a><br/>\n")
-							
-							content += ("\n</body></html>")
-						else:
-							content = entrycontent.strip() + "\n\nURL: "+link
-							if hasattr(entry,'enclosures'):
-								for enclosure in entry.enclosures:
-									if enclosure.url != "":
-										content += ('\nEnclosure: '+unu(enclosure.url)+"\n")
 
 					smtpserver = send(fromhdr, tohdr, subjecthdr, content, contenttype, extraheaders, smtpserver)
 			
